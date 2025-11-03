@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import os
+from github import Github
+import base64
 
 # === PAGE CONFIGURATION ===
 st.set_page_config(page_title="Suivi Joueuse RMBB", layout="centered")
@@ -180,12 +182,12 @@ st.markdown("<h4>📝 Commentaire libre</h4>", unsafe_allow_html=True)
 commentaire = st.text_area("Comment t’es-tu sentie aujourd’hui ?", "")
 st.markdown('</div>', unsafe_allow_html=True)
 
-# === ENREGISTREMENT ===
+# === ENREGISTREMENT SUR GITHUB ===
 if st.button("💾 Enregistrer mes données"):
     if not joueuse:
         st.error("⚠️ Merci d’entrer ton nom avant d’enregistrer.")
     else:
-        file_path = "suivi_joueuse.csv"
+        # Crée le DataFrame de la saisie
         df_new = pd.DataFrame({
             "Joueuse": [joueuse],
             "Etat_Mental (0=Excellent,10=Fatiguée)": [etat_mental],
@@ -194,10 +196,28 @@ if st.button("💾 Enregistrer mes données"):
             "Commentaire": [commentaire]
         })
 
-        if os.path.exists(file_path):
-            df_new.to_csv(file_path, mode='a', header=False, index=False)
-        else:
-            df_new.to_csv(file_path, index=False)
+        # Transforme le DataFrame en CSV en mémoire
+        csv_data = df_new.to_csv(index=False)
 
-        st.success("✅ Données enregistrées avec succès !")
+        # Connexion GitHub via token sécurisé
+        token = os.getenv("GITHUB_TOKEN")
+        repo_name = "Marchais795/mon_projet_streamlit"
+        g = Github(token)
+        repo = g.get_repo(repo_name)
+
+        try:
+            # Essaie de récupérer le fichier existant
+            contents = repo.get_contents("suivi_joueuse.csv")
+            # Concatène l'ancien CSV avec le nouveau
+            import io
+            import pandas as pd
+            old_csv = io.StringIO(contents.decoded_content.decode())
+            df_old = pd.read_csv(old_csv)
+            df_combined = pd.concat([df_old, df_new], ignore_index=True)
+            repo.update_file(contents.path, "Mise à jour données", df_combined.to_csv(index=False), contents.sha)
+        except:
+            # Sinon crée le fichier s'il n'existe pas
+            repo.create_file("suivi_joueuse.csv", "Ajout données", csv_data)
+
+        st.success("✅ Données enregistrées avec succès sur GitHub !")
         st.markdown("<div class='success-msg'>Merci pour ta participation 💙</div>", unsafe_allow_html=True)
